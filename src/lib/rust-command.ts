@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { open } from '@tauri-apps/plugin-dialog';
+import { open,save } from '@tauri-apps/plugin-dialog';
 
 export type EventType = {
     event: 'started' | 'progress' | 'finished';
@@ -25,6 +25,18 @@ export class RustCommands {
         });
     }
 
+    static async saveAudioFile(fileName: string) {
+        const outPath = await save({
+            defaultPath: fileName,
+            filters: [{
+                name: 'Audio File',
+                extensions: ['mp3']
+            }]
+        });
+        console.log("saveFilePath", outPath);
+        await invoke("save_mp3_file", { fileName, outPath });
+    }
+
     static async convertAudioFile(path: string, onEvent: Channel<EventType>): Promise<string> {
         return await invoke("read_file", { path, onEvent });
     }
@@ -33,4 +45,5 @@ export class RustCommands {
     static async deleteMp3File(fileName: string) {
         return await invoke("delete_mp3_file", { fileName });
     }
+
 }

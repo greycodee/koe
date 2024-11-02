@@ -67,6 +67,11 @@ export default function App() {
         await RustCommands.deleteMp3File(fileName);
     }
 
+    const handleDownload = async (fileName:string) => {
+        await RustCommands.saveAudioFile(fileName);
+
+    }
+
 
     return (
         <div className="container mx-auto p-4 space-y-4">
@@ -96,7 +101,9 @@ export default function App() {
                                     <Badge variant={h.status}>{h.status}</Badge>
                                 </TableCell>
                                 <TableCell>
-                                    <Button variant="destructive">Download</Button>
+                                    <Button variant="destructive"
+                                        onClick={()=>handleDownload(h.out_file_name)}
+                                    >Download</Button>
                                     <Button variant="destructive"
                                         onClick={() => handleDelete(h.id,h.out_file_name)}
                                     >Delete</Button>

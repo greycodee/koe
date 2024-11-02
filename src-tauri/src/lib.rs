@@ -77,6 +77,20 @@ fn delete_mp3_file(app_handle: AppHandle, file_name: String) -> Result<(), Strin
         Err(e) => Err(format!("Failed to delete file: {}", e)),
     }
 }
+#[tauri::command]
+fn save_mp3_file(app_handle: AppHandle,file_name:&str,out_path:&str) -> Result<(), String> {
+    let app_local_data_dir = app_handle.path().app_local_data_dir();
+    let mp3_file_path = format!(
+        "{}/{}",
+        app_local_data_dir.unwrap().to_str().unwrap(),
+        file_name
+    );
+    // copy file
+    match fs::copy(mp3_file_path, out_path) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to copy file: {}", e)),
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -101,7 +115,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![greet, read_file, delete_mp3_file])
+        .invoke_handler(tauri::generate_handler![greet, read_file, delete_mp3_file,save_mp3_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
