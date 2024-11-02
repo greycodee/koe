@@ -8,73 +8,25 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import {useState,useEffect} from "react";
-import { open } from '@tauri-apps/plugin-dialog';
 import { appLocalDataDir } from '@tauri-apps/api/path';
-import {Channel,convertFileSrc, invoke} from "@tauri-apps/api/core";
+import {Channel,convertFileSrc} from "@tauri-apps/api/core";
 
-import Database from '@tauri-apps/plugin-sql';
+import { historyDAO, type History } from "@/lib/db-dao";
 import { Badge } from "@/components/ui/badge";
-
-
-type History = {
-    id            :number,
-    src_path      :string,
-    src_file_name :string,
-    out_file_name :string,
-    status        :"Pending" | "Success" | "Failed" ,
-    crate_at      :number
-}
-
-
-type EventType =
-    | {
-    event: 'started';
-    data: {
-        url: string;
-        downloadId: number;
-        contentLength: number;
-    };
-}
-    | {
-    event: 'progress';
-    data: {
-        val: number;
-    };
-}
-    | {
-    event: 'finished';
-    data: {
-        downloadId: number;
-    };
-};
+import { RustCommands, type EventType } from "@/lib/rust-command";
 
 export default function App() {
     const [history, setHistory] = useState<History[]>([]);
-    const [sqliteDB, setSqliteDB] = useState<Database>();
     const [localDataDir, setLocalDataDir] = useState<string>("");
 
-    // let localDataDir = await appLocalDataDir();
-    // let mp3FilePath = await join(localDataDir, mp3FileName);
-    // let mp3FileUrl = convertFileSrc(mp3FilePath);
 
     useEffect(() => {
-
         (async () => {
             let localDataDir = await appLocalDataDir();
             setLocalDataDir(localDataDir);
-            const db = await Database.load('sqlite:koe.db');
-            if (!db) {
-                console.error("Failed to load database");
-                return;
-            }else {
-                setSqliteDB(db);
-                db.select<History[]>("SELECT * FROM history").then((result) => {
-                    console.log("result:", result);
-                    setHistory(result);
-                });
-                console.log("history:", history);
-            }
-            // const history = await db.execute("SELECT * FROM history").fetch_all();
+            await historyDAO.initialize();
+            const result = await historyDAO.getAllHistory();
+            setHistory(result);
         })();
     }, []);
 
@@ -82,41 +34,37 @@ export default function App() {
 
     const onEvent = new Channel<EventType>();
     onEvent.onmessage = (message) => {
-        // console.log(`got download event ${message.data?.chunkLength}`);
         if (message.event === 'progress') {
             console.log(`got download event ${message.data.val}`);
             // setProgress(message.data.val);
         }
-
     };
 
 
     const handleAdd = async () => {
-
-        const file = await open({
-            multiple: false,
-            directory: false,
-            filters: [
-                {
-                    name: "Audio File",
-                    extensions: [".arm","silk"]
-                }
-            ]
-        });
-
+        const file = await RustCommands.openAudioFile();
 
         if (file) {
-            const mp3FileName:string = await invoke("read_file", { path: file,onEvent });
-            setHistory([...history, {
-                id: history.length + 1,
+            const mp3FileName = await RustCommands.convertAudioFile(file, onEvent);
+            const newHistory: Omit<History, 'id'> = {
                 src_path: file,
                 src_file_name: file.split("/").pop() as string,
                 out_file_name: mp3FileName,
                 crate_at: Date.now(),
                 status: "Success",
-            }]);
-            sqliteDB?.execute("INSERT INTO history (src_path,src_file_name,out_file_name,crate_at,status) VALUES (?,?,?,?,?)", [file, file.split("/").pop(), mp3FileName, Date.now(), "Success"]);
+            };
+            
+            await historyDAO.addHistory(newHistory);
+            const updatedHistory = await historyDAO.getAllHistory();
+            setHistory(updatedHistory);
         }
+    }
+
+    const handleDelete = async (id: number,fileName:string) => {
+        await historyDAO.deleteHistory(id);
+        const updatedHistory = await historyDAO.getAllHistory();
+        setHistory(updatedHistory);
+        await RustCommands.deleteMp3File(fileName);
     }
 
 
@@ -149,7 +97,9 @@ export default function App() {
                                 </TableCell>
                                 <TableCell>
                                     <Button variant="destructive">Download</Button>
-                                    <Button variant="destructive">Delete</Button>
+                                    <Button variant="destructive"
+                                        onClick={() => handleDelete(h.id,h.out_file_name)}
+                                    >Delete</Button>
                                     <audio controls src={
                                         convertFileSrc(localDataDir+"/"+h.out_file_name)
                                     }>
